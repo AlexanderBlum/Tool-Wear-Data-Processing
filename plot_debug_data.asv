@@ -1,0 +1,96 @@
+function plot_debug_data_r8(surfArray)
+
+%% create figures
+h.unaligned_plunges = figure('Visible'      , 'Off'              ,...
+                             'Units'        , 'Normalized'       ,...
+                             'NumberTitle'  , 'off'              ,...
+                             'Name'         , 'Unaligned plunges',...
+                             'OuterPosition', [  0  .5  .3  .45 ]);
+
+h.orient_slice =      figure('Visible'      , 'Off'           ,...
+                             'Units'        , 'Normalized'    ,...
+                             'NumberTitle'  , 'off'           ,...
+                             'Name'         , 'Orient slice'  ,...
+                             'OuterPosition', [ .3  .5  .3  .45 ]);     
+                         
+h.col_avg_std  =      figure('Visible'      , 'Off'           ,...
+                             'Units'        , 'Normalized'    ,...
+                             'NumberTitle'  , 'off'           ,...
+                             'Name'         , 'Col avg std dev'  ,...
+                             'OuterPosition', [ .6   .05  .3  .45 ]);                             
+                             
+%% Plot unaligned plunges                         
+    unaligned_plunge_ax = axes(h.unaligned_plunges); hold(unaligned_plunge_ax, 'on');
+    set(h.unaligned_plunges,'CurrentAxes', unaligned_plunge_ax);
+    offset = 0;
+    for ii = 1:length(x_interp)
+        plot(unaligned_plunge_ax, x_interp{ii}, z_interp{ii} + offset);
+        offset = offset + .5;
+    end
+%     cellfun(@plot, x_interp, z_interp); 
+    xlabel(unaligned_plunge_ax, 'Plunge position (\mum)');
+    ylabel(unaligned_plunge_ax, 'Plunge depth (\mum)');
+
+    legend(unaligned_plunge_ax, {'plunge 0', 'plunge 1', 'plunge 2', 'plunge 3', ...
+                  'plunge 4', 'plunge 5'}                       , ...
+                  'Location', 'best', 'AutoUpdate', 'off');
+%% plot orientation slice
+    orient_slice_ax = axes(h.orient_slice); hold(orient_slice_ax, 'on');                             
+    plot(orient_slice_ax, debug.orient_slice);
+    xlabel(orient_slice_ax, 'Plunge position (Indices)');
+    ylabel(orient_slice_ax, 'Plunge depth (\mum)');    
+    
+%% plot plane fit slices
+    plane_slices_ax = axes(h.plane_slices); hold(plane_slices_ax, 'on');       
+%     cellfun(@plot, debug.plane_slices); 
+    offset = 0;
+    for ii = 1:length(x_interp)
+        plot(plane_slices_ax, debug.plane_slices{ii} + offset);
+        plot(plane_slices_ax, debug.plane_x(1,ii), debug.plane_z(1,ii) + offset, 'o');
+        plot(plane_slices_ax, debug.plane_x(2,ii), debug.plane_z(2,ii) + offset, 'o');
+        offset = offset + 0.5;
+    end    
+        left_start = debug.start_index;
+        plot(plane_slices_ax, [left_start   left_start],...
+             [min(debug.plane_slices{1}) 1.1*max(debug.plane_slices{1})]);
+        
+        right_start = length(debug.plane_slices{1}) - debug.start_index;
+        plot(plane_slices_ax, [right_start   right_start],...
+             [min(debug.plane_slices{1}) 1.1*max(debug.plane_slices{1})]);
+    xlabel(plane_slices_ax, 'Plunge position (Indices)');
+    ylabel(plane_slices_ax, 'Plunge depth (\mum)');   
+    
+%% plot std deviation of col avg plunges    
+    col_avg_std_ax = axes(h.col_avg_std); hold(col_avg_std_ax, 'on');
+    set(h.col_avg_std,'CurrentAxes', col_avg_std_ax);
+    offset = 0;
+    for ii = 1:length(x_interp)
+        plot(col_avg_std_ax, debug.col_avg_std{ii} + offset);
+        offset = offset + .25;
+    end
+
+    xlabel(col_avg_std_ax, 'Plunge position (index)');
+    ylabel(col_avg_std_ax, 'Col avg std dev (\mum)');
+    
+%% plot curves from edge finder
+%     edge_rot_line_ax = axes(h.edge_rot_line); hold(edge_rot_line_ax, 'on');
+%     set(h.edge_rot_line,'CurrentAxes', edge_rot_line_ax);
+%     for ii = 1:length(x_interp)
+%         plot(edge_rot_line_ax, debug.rot_lines{1, ii} - debug.rot_lines{1, ii}(1) + 10, '-');
+%         plot(edge_rot_line_ax, debug.rot_lines{2, ii} - debug.rot_lines{2, ii}(1), '-');
+% %         for kk = 1:2
+% %             plot(edge_rot_line_ax, debug.rot_lines{kk, ii} - debug.rot_lines{kk, ii}(1), '-');
+% %         end
+%     end
+% %     cellfun(@plot, x_interp, z_interp); 
+%     ylabel(edge_rot_line_ax, 'Edge Y position (normalized index)');
+%     xlabel(edge_rot_line_ax, 'Edge X position (index)');
+
+%% display plots
+
+hn = fieldnames(h); % create cell array of all field names in structure
+for ii = 1:numel(hn)
+    % loop structure by field name, set Units and NumberTitle properties
+    h.(hn{ii}).Visible = 'On';  
+end
+end
