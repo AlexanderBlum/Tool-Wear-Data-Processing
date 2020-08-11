@@ -26,8 +26,10 @@ end
 analyzeData.GetAvgSlices();
 
 for ii = 1:analyzeData.Nplunges
-    analyzeData.PlungeTraceData(ii).InterpTrace(obj.dxInterp);
-end % interp plunge trace data
+    analyzeData.PlungeTraceData(ii).dx = analyzeData.PlungeMapData(ii).dx;
+    analyzeData.PlungeTraceData(ii).Xscale = analyzeData.PlungeMapData(ii).Xscale;
+    analyzeData.PlungeTraceData(ii).Zscale = analyzeData.PlungeMapData(ii).Zscale;
+end
 
 analyzeData.InterpPlungeTraces();
 

@@ -6,7 +6,6 @@ classdef PlungeProcessing < handle
         PlungeResidData SurfAnalysis
         Name
         Nplunges
-        
     end
     properties (Constant)
         dxInterp  = 0.001; % micrometers
@@ -18,7 +17,8 @@ classdef PlungeProcessing < handle
         SlopeTol  = 10;      
     end
     properties (Access = private)
-        UserSelect = 0;
+        RotCrop           = 100;
+        UserSelect        = 0;
         EdgeFindStartDist = 20; % in micrometers
         EdgeFindStartSide {mustBeMember(EdgeFindStartSide,{'l','r'})} = 'l';
     end
@@ -34,7 +34,7 @@ classdef PlungeProcessing < handle
                 obj.PlungeMapData(ii) = ...
                     SurfAnalysis(inputData(ii).phaseMap, MapFOV/MapPixels, 'm', 'um');
                 obj.PlungeTraceData = SurfAnalysis();
-                obj.
+                obj.PlungeResidData = SurfAnalysis();
             end
             obj.Name = createFilename(inputData);   
         end % constructor
@@ -45,7 +45,7 @@ classdef PlungeProcessing < handle
                     obj.PlungeMapData(ii).PhaseMap = obj.PlungeMapData(ii).PhaseMap';
                 end
             end
-        end % check map orientation
+        end % CheckMapOrientation
         
         function RemovePlane(obj)
             for ii = 1:obj.Nplunges
@@ -69,10 +69,7 @@ classdef PlungeProcessing < handle
                     plot(avgSlice)
                     title('Remove Plane: Select Flats');
                     leftEdgeInd = floor(ginput(1));
-                    leftEdgeInd = leftEdgeInd(1);
-                    if ii == obj.Nplunges
-                        close(gcf);  
-                    end                    
+                    leftEdgeInd = leftEdgeInd(1);          
                 end
             % instead of finding both edges, which is buggy
             % find the plunge width with sag equation
@@ -89,34 +86,90 @@ classdef PlungeProcessing < handle
                 obj.PlungeMapData(ii).PhaseMap = ...
                     obj.PlungeMapData(ii).PhaseMap - fitPlane;                  
             end
-        end % remove best fit plane
+        end % RemovePlane
     
         function obj = InterpPlungeMaps(obj)
             for ii = 1:obj.Nplunges
                 obj.PlungeMapData(ii).InterpMap(obj.dxInterp);
             end
         end % interp plunge maps
-        
-        function obj = InterpPlungeTraces(obj)
-            for ii = 1:obj.Nplunges
-                obj.PlungeMapData(ii).InterpTrace(obj.dxInterp);
-            end
-        end     
-        
+                 
         function obj = RotateMaps(obj)
-        end
+            for ii = 1:obj.Nplunges
+                % interp         
+%                 obj.PlungeMapData(1).RotateSurf(-5)                
+                frontSliceIndex = floor(0.1*obj.PlungeMapData(ii).Ncols);
+                backSliceIndex  = floor(0.9*obj.PlungeMapData(ii).Ncols);     
+                frontSlice = obj.PlungeMapData(ii).GetSlice(frontSliceIndex, 'col');
+                backSlice = obj.PlungeMapData(ii).GetSlice(backSliceIndex, 'col');      
+                slicePixelDist = backSliceIndex - frontSliceIndex;                
+                if obj.UserSelect == 0
+                    obj.EdgeFindStartSide = 'l';
+                    efStartInd = floor(obj.EdgeFindStartDist./obj.PlungeMapData(ii).dx);                    
+                    frontIndex = edgeFinder(frontSlice,...
+                                     obj.EdgeFindStartSide,...
+                                     efStartInd,...
+                                     obj.SlopeTol,...
+                                     obj.PlungeMapData(ii).dx);  
+                    backIndex = edgeFinder(backSlice,...
+                                     obj.EdgeFindStartSide,...
+                                     efStartInd,...
+                                     obj.SlopeTol,...
+                                     obj.PlungeMapData(ii).dx);                                     
+                elseif obj.UserSelect == 1
+                    plot(frontSlice)
+                    title('Rotation Front Slice');                    
+                    frontIndex = floor(ginput(1));
+                    frontIndex = frontIndex(1);                        
+
+                    plot(backSlice)
+                    title('Rotation Back Slice');                    
+                    backIndex = floor(ginput(1));
+                    backIndex = backIndex(1);
+                    if ii == obj.Nplunges
+                        close(gcf)
+                    end
+                end
+                rotAngle = -atand((frontIndex-backIndex)/slicePixelDist);    
+                obj.PlungeMapData(ii).RotateSurf(rotAngle);
+                obj.PlungeMapData(ii).PhaseMap = ...
+                    obj.PlungeMapData(ii).PhaseMap(obj.RotCrop:end-obj.RotCrop,...
+                                                   obj.RotCrop:end-obj.RotCrop);
+            end
+        end % RotateMaps
         
         function obj = GetAvgSlices(obj)
             for ii = 1:obj.Nplunges
-                obj.PlungeMapData(ii).Trace = ...
+                obj.PlungeTraceData(ii).Trace = ...
                     obj.PlungeMapData(ii).GetAvgSlice('col');
             end
         end
         
-        function obj = alignPlungesTrim(obj)
+        function obj = AlignPlunges(obj)
+            dzStep = 0.0025;
+            if obj.UserSelect == 1
+                obj.PlungeTraceData(1).Trace.Plot()
+                title('1st click = z0, |2nd click - 3rd click| = h');
+                [~, zGinput] = ginput(3);
+                close(gcf)
+                z0 = zGinput(1);     
+                h = abs(diff(zGinput(2:3)));                  
+            end          
+            trimWidth = sqrt(8*h*obj.R);
+            for ii = 1:obj.Nplunges
+                obj.PlungeTraceData(ii).Trace = ...
+                    trimPlunge(zPlunge, trimWidth, dzStep, x, z0);
+            end
         end
         
+        function obj = FitFirstPlunge(obj)
+        end
         
+        function obj = CalcResiduals(obj)
+        end
+        
+        function obj = PlotResults(obj)
+        end
     end
 
 end
@@ -219,6 +272,34 @@ function z = removeTilt(z, ind)
     z    = z - zFit'                                      ; % z with tilt removed
 end
 
+function zPlunge = trimPlunge(zPlunge, trimWidth, dzStep, x, z0)
+
+% Function attempts to find f^2/8r location that is the same for all 
+% plunges.
+
+% h  - height location to try and locate f at
+% dz - amount to step down each loop iteration
+% x  - interpolated x data from main script
+% z  - interpolated z data from main script
+% z0 - position on z axis to begin scanning at
+
+for ii = 1:floor(length(x)/2)
+    % find first and last values in x array that correspond
+    % to where z is below the current scan value
+    xPair = [x(find(zPlunge < z0, 1, 'first'))  x(find(zPlunge < z0, 1, 'last'))]; 
+    xDist = max(xPair) - min(xPair);
+    % if only one value that meets the criteria is found, move down in z
+    if length(xPair) == 1
+        z0 = z0 - dz;
+    % round x_dist and f to two decimal places. if x_dist is less than or
+    % equal to f, then trim at this location.
+    elseif round(xDist, 4) <= round(trimWidth, 4)
+        zPlunge = zPlunge(x >= min(xPair) & x <= max(xPair));
+        break
+    end
+    z0 = z0 - dzStep;
+end
+end
 
 % function maxSlope = maxPlungeSlope(R, doc)
 %                 MaxSlope = atand(sqrt(2*doc/(R-2*doc)));
