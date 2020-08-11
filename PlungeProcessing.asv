@@ -1,9 +1,7 @@
 classdef PlungeProcessing < handle
     
     properties
-        PlungeMapData   SurfAnalysis
-        PlungeTraceData SurfAnalysis
-        PlungeResidData SurfAnalysis
+        PlungeData SurfAnalysis
         Name
         Nplunges
         
@@ -31,37 +29,35 @@ classdef PlungeProcessing < handle
             for ii = 1:obj.Nplunges
                 MapFOV = obj.MapFOV;
                 MapPixels = obj.MapPixels;
-                obj.PlungeMapData(ii) = ...
+                obj.PlungeData(ii) = ...
                     SurfAnalysis(inputData(ii).phaseMap, MapFOV/MapPixels, 'm', 'um');
-                obj.PlungeTraceData = SurfAnalysis();
-                obj.
             end
             obj.Name = createFilename(inputData);   
         end % constructor
  
         function obj = CheckMapOrientation(obj)
             for ii = 1:obj.Nplunges
-                if std(nanmean(obj.PlungeMapData(ii).PhaseMap, 2)) < 1
-                    obj.PlungeMapData(ii).PhaseMap = obj.PlungeMapData(ii).PhaseMap';
+                if std(nanmean(obj.PlungeData(ii).PhaseMap, 2)) < 1
+                    obj.PlungeData(ii).PhaseMap = obj.PlungeData(ii).PhaseMap';
                 end
             end
         end % check map orientation
         
         function RemovePlane(obj)
             for ii = 1:obj.Nplunges
-                avgSlice = obj.PlungeMapData(ii).GetAvgSlice('col');
+                avgSlice = obj.PlungeData(ii).GetAvgSlice('col');
                 % remove slope and dc bias
                 % chunk of slice, the array values are in micrometers
-                ind = floor([10, 50]./obj.PlungeMapData(ii).dx); 
+                ind = floor([10, 50]./obj.PlungeData(ii).dx); 
                 avgSlice = removeTilt(avgSlice, ind);                
                 if obj.UserSelect == 0                                    
                     obj.EdgeFindStartSide = 'l';
-                    efStartInd = floor(obj.EdgeFindStartDist./obj.PlungeMapData(ii).dx);
+                    efStartInd = floor(obj.EdgeFindStartDist./obj.PlungeData(ii).dx);
                     leftEdgeInd = edgeFinder(avgSlice,...
                                      obj.EdgeFindStartSide,...
                                      efStartInd,...
                                      obj.SlopeTol,...
-                                     obj.PlungeMapData(ii).dx);         
+                                     obj.PlungeData(ii).dx);         
                 elseif obj.UserSelect == 1
                     if ii == 1
                         figure('Units', 'Normalized', 'OuterPosition', [.01 .05 .95 .9]);
@@ -78,28 +74,28 @@ classdef PlungeProcessing < handle
             % find the plunge width with sag equation
             % then add that to the left index to find the right index
                 plungeWidth = ...
-                    floor(sqrt(abs(min(avgSlice))*8*obj.R)/obj.PlungeMapData(ii).dx);
+                    floor(sqrt(abs(min(avgSlice))*8*obj.R)/obj.PlungeData(ii).dx);
                 indOffset = floor(.05*length(avgSlice));                   
                 maskInd = floor([leftEdgeInd - indOffset,...
                                 leftEdgeInd + plungeWidth + indOffset]);
                 refSurf = SurfAnalysis();
-                refSurf.PhaseMap = obj.PlungeMapData(ii).PhaseMap;   
+                refSurf.PhaseMap = obj.PlungeData(ii).PhaseMap;   
                 refSurf.PhaseMap(maskInd(1):maskInd(2), :) = nan;   
                 fitPlane = refSurf.FitPlane();
-                obj.PlungeMapData(ii).PhaseMap = ...
-                    obj.PlungeMapData(ii).PhaseMap - fitPlane;                  
+                obj.PlungeData(ii).PhaseMap = ...
+                    obj.PlungeData(ii).PhaseMap - fitPlane;                  
             end
         end % remove best fit plane
     
         function obj = InterpPlungeMaps(obj)
             for ii = 1:obj.Nplunges
-                obj.PlungeMapData(ii).InterpMap(obj.dxInterp);
+                obj.PlungeData(ii).InterpMap(obj.dxInterp);
             end
         end % interp plunge maps
         
         function obj = InterpPlungeTraces(obj)
             for ii = 1:obj.Nplunges
-                obj.PlungeMapData(ii).InterpTrace(obj.dxInterp);
+                obj.PlungeData(ii).InterpTrace(obj.dxInterp);
             end
         end     
         
@@ -107,16 +103,7 @@ classdef PlungeProcessing < handle
         end
         
         function obj = GetAvgSlices(obj)
-            for ii = 1:obj.Nplunges
-                obj.PlungeMapData(ii).Trace = ...
-                    obj.PlungeMapData(ii).GetAvgSlice('col');
-            end
         end
-        
-        function obj = alignPlungesTrim(obj)
-        end
-        
-        
     end
 
 end

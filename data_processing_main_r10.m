@@ -1,7 +1,7 @@
 function data_processing_main_r10(input_data)
 
 save_data = 0;
-plot_data = 0;
+plot_data = 1;
 save_dir = ['C:\Users\Alexa\Google Drive\01 School\02 Research\01 Tool Wear Research\02 Experiment data\',...
             'Tool Wear Experiment Data\01 Good Data\KY 314561 0 deg 20% O2 - Repeat'];
 res_axis = 'small';
@@ -119,8 +119,6 @@ for ii = 1:n_plunges
     roughPlunges(ii).dx = dx_interp;
 end
 
-clear dx_interp
-
 %% perform final alignment
 alignedPlunges = align_plunges_trim(roughPlunges);
 for ii = 1:n_plunges
@@ -157,7 +155,7 @@ end
 x = linspace(0, p_length*dx_interp, p_length);
 x = x - mean(x);
 
-clear fs bs ii ind map_crop n_plunges p_length map pixels fov
+clear fs bs ii ind map_crop n_plunges p_length map pixels fov dx_interp
 %% plot data
 if plot_data == 1
     figs = plot_results(alignedPlunges, residual, res_axis, text_size, 0, 0);

@@ -1,4 +1,4 @@
-function data_processing_main_r11(input_data)
+function data_processing_main(input_data)
 %% close any uiwaitbar's that were left open
 F = findall(0,'type','figure','tag','TMWWaitbar');
 delete(F);
@@ -7,37 +7,23 @@ delete(F);
 % GENERAL PARAMETERS     
 % parameter list:
 % fixed paramaters
-pixels     = 1024;
-fov        = 420;
-map_crop   = 100;
-dx_interp = .001;
+userSelect = 1;
+dxInterp = .001;
+zScaleFactor = 10^6;
+analyzeData = PlungeProcessing(input_data, length(input_data));
 
-n_plunges = length(input_data);
-maps(n_plunges,1) = SurfAnalysis();
-plunges(n_plunges,1) = SurfAnalysis();
-
-plungeProcessingObj = PlungeProcessing(input_data, n_plunges, fov/pixels, dx_interp)
-
-%% create object array
-for ii = 1:n_plunges
-    plungeProcessingObj.PlungeMaps(ii) = SurfAnalysis(input_data(ii).phaseMap, fov/pixels, 'm');
-end
 
 %% main program
 %% prepare data for final alignment
 % change z scale from meters to um
-for ii = 1:n_plunges
-    plungeProcessingObj.PlungeMaps(ii) = plungeProcessingObj.PlungeMaps(ii).*10^6;
-    maps(ii).Zscale = 'um';
+for ii = 1:analyzeData.Nplunges
+    analyzeData.PlungeData(ii).PhaseMap = analyzeData.PlungeData(ii).PhaseMap*zScaleFactor;
+    analyzeData.PlungeData(ii).Zscale   = 'um';
 end
 
-% check orientation: take std dev of col avg data along dim 2, if it is greater than 1 the data is aligned
-if std(nanmean(plungeProcessingObj.PlungeMaps(1).PhaseMap, 2)) < 1
-    for ii = 1:n_plunges
-        plungeProcessingObj.PlungeMaps(1).PhaseMap = plungeProcessingObj.PlungeMaps(1).PhaseMap';
-    end
-end
+analyzeData.checkMapOrientation();
 
+analyzeData.
 % remove best fit plane
 for ii = 1:n_plunges
     figure('Units', 'Normalized', 'OuterPosition', [.01 .05 .95 .9]);
@@ -91,10 +77,10 @@ end
 for ii = 1:n_plunges
     plunges(ii).Trace = nanmean(maps(ii).PhaseMap, 2);
     x = linspace(0, length(plunges(ii).Trace)*fov/pixels, length(plunges(ii).Trace))';
-    Ninterp = floor(x(end)/dx_interp);
-    x_interp = linspace(0, Ninterp*dx_interp, Ninterp)';  
+    Ninterp = floor(x(end)/dxInterp);
+    x_interp = linspace(0, Ninterp*dxInterp, Ninterp)';  
     plunges(ii).Trace = interp1(x, plunges(ii).Trace, x_interp, 'linear');
-    plunges(ii).dx = dx_interp;
+    plunges(ii).dx = dxInterp;
 end
 
 %% perform final alignment
@@ -102,7 +88,7 @@ alignedPlunges = align_plunges_trim(plunges);
 
 % create fit residual for zero plunge
 % this function needs to received a TRIMMED plunge
-z0_fit = fit_plunge(dx_interp, alignedPlunges(1).Trace, 2);
+z0_fit = fit_plunge(dxInterp, alignedPlunges(1).Trace, 2);
 
 %% get residuals
 % find shortest z vector. truncate all z and x vectors to that length.
@@ -112,7 +98,7 @@ p_length = nan(n_plunges,1);
 for ii = 1:n_plunges
     p_length(ii) = length(alignedPlunges(ii).Trace);
 end
-p_length_max_delta = (max(p_length) - min(p_length))*dx_interp; %#ok<NASGU>
+p_length_max_delta = (max(p_length) - min(p_length))*dxInterp; %#ok<NASGU>
 p_length = min(p_length);
 
 residual = cell(1,n_plunges);
@@ -124,7 +110,7 @@ end
 
 figure
 for ii = 1:n_plunges
-    x = linspace(0, length(residual{ii})*dx_interp, length(residual{ii}));
+    x = linspace(0, length(residual{ii})*dxInterp, length(residual{ii}));
     x = x - mean(x);
     plot(x, residual{ii});
     hold on
