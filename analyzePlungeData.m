@@ -1,40 +1,58 @@
 
 zScaleFactor = 10^6;
 userSelect = 0;
-analyzeData = PlungeProcessing(output(1:3), 0);
+processedData = PlungeProcessing(output(1:3));
+processedData.ResidCalcType = 'subtractPlungeZero';
+processedData.UserSelect = 0;
+processedData.TrimH = 7;
+processedData.TrimZo = -2;
+% ResidCalcType = 'subtractPlungeZero';
 
 %% main program
 %% prepare data for final alignment
 % change z scale from meters to um
-for ii = 1:analyzeData.Nplunges
-    analyzeData.PlungeMapData(ii).PhaseMap = analyzeData.PlungeMapData(ii).PhaseMap*zScaleFactor;
-    analyzeData.PlungeMapData(ii).Zscale   = 'um';
+for ii = 1:processedData.Nplunges
+    processedData.MapData(ii).PhaseMap = processedData.MapData(ii).PhaseMap*zScaleFactor;
+    processedData.MapData(ii).Zscale   = 'um';
 end
 
-analyzeData.CheckMapOrientation();
+processedData.CheckMapOrientation();
 
-analyzeData.RemovePlane();
+processedData.RemovePlane();
 
-analyzeData.RotateMaps();
+processedData.RotateMaps();
 
-for ii = 1:analyzeData.Nplunges
-    analyzeData.PlungeTraceData(ii).dx = analyzeData.PlungeMapData(ii).dx;
-    analyzeData.PlungeTraceData(ii).Xscale = analyzeData.PlungeMapData(ii).Xscale;
-    analyzeData.PlungeTraceData(ii).Zscale = analyzeData.PlungeMapData(ii).Zscale;
+processedData.GetAvgSlices();
+
+% add most current property data to the plunge traces
+for ii = 1:processedData.Nplunges
+    processedData.TraceData(ii).dx = processedData.MapData(ii).dx;
+    processedData.TraceData(ii).Xscale = processedData.MapData(ii).Xscale;
+    processedData.TraceData(ii).Zscale = processedData.MapData(ii).Zscale;
 end
 
-analyzeData.GetAvgSlices();
+processedData.InterpTraces();
 
-for ii = 1:analyzeData.Nplunges
-    analyzeData.PlungeTraceData(ii).InterpTrace(obj.dxInterp);
-end % interp plunge trace data
+% analyzeData.PlotSlices();   % see if column average went well
 
-analyzeData.InterpPlungeTraces();
+% processedData.PlungeWidths   % only works on untrimmed plunges
 
-analyzeData.AlignPlungesTrim();
+% processedData.AlignPlungesTrim();
 
-analyzeData.FitFirstPlunge();
+processedData.AlignPlungesSlope();
 
-analyzeData.CalcResiduals();
+% processedData.PlotSlices();   % see if alignment went well
 
-analyzeData.PlotResults();
+processedData.FitFirstPlunge(3);
+
+% add most current property data to the plunge residuals
+for ii = 1:processedData.Nplunges
+    processedData.ResidualData(ii).dx = processedData.MapData(ii).dx;
+    processedData.ResidualData(ii).Xscale = processedData.MapData(ii).Xscale;
+    processedData.ResidualData(ii).Zscale = processedData.MapData(ii).Zscale;
+end
+
+processedData.CalcResiduals();
+
+processedData.PlotResiduals();
+% processedData.PlotResults();
