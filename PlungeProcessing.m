@@ -19,7 +19,7 @@ classdef PlungeProcessing < handle
         
     end
     properties (Constant)
-        dxInterp  double = 0.001; % micrometers
+        dxInterp  double = 0.1; % micrometers
         Pixels double = 1024;
         FOV    double = 420; % micrometers
         MapCrop   double = 100;
@@ -78,11 +78,11 @@ classdef PlungeProcessing < handle
                 avgSlice = obj.MapData(ii).GetAvgSlice('col');
                 % remove slope and dc bias
                 % chunk of slice, the array values are in micrometers
-                ind = floor([10, 50]./obj.MapData(ii).dx); 
+                ind = round([10, 50]./obj.MapData(ii).dx); 
                 avgSlice = removeTilt(avgSlice, ind);                
                 if obj.UserSelect == 0                                    
                     obj.EdgeFindStartSide = 'l';
-                    efStartInd = floor(obj.EdgeFindStartDist./obj.MapData(ii).dx);
+                    efStartInd = round(obj.EdgeFindStartDist./obj.MapData(ii).dx);
                     leftEdgeInd = edgeFinder(avgSlice,...
                                      obj.EdgeFindStartSide,...
                                      efStartInd,...
@@ -94,16 +94,16 @@ classdef PlungeProcessing < handle
                     end
                     plot(avgSlice)
                     title('Remove Plane: Select Flats');
-                    leftEdgeInd = floor(ginput(1));
+                    leftEdgeInd = round(ginput(1));
                     leftEdgeInd = leftEdgeInd(1);          
                 end
                 % instead of finding both edges, which is buggy
                 % find the plunge width with sag equation
                 % then add that to the left index to find the right index
                 plungeWidth = ...
-                    floor(sqrt(abs(min(avgSlice))*8*obj.R)/obj.MapData(ii).dx);
-                indOffset = floor(.05*length(avgSlice));                   
-                maskInd = floor([leftEdgeInd - indOffset,...
+                    round(sqrt(abs(min(avgSlice))*8*obj.R)/obj.MapData(ii).dx);
+                indOffset = round(.05*length(avgSlice));                   
+                maskInd = round([leftEdgeInd - indOffset,...
                                 leftEdgeInd + plungeWidth + indOffset]);
                 refSurf = SurfAnalysis();
                 refSurf.PhaseMap = obj.MapData(ii).PhaseMap;   
@@ -130,14 +130,14 @@ classdef PlungeProcessing < handle
             for ii = 1:obj.Nplunges
                 % interp         
 %                 obj.MapData(1).RotateSurf(-5)                
-                frontSliceIndex = floor(0.1*obj.MapData(ii).Ncols);
-                backSliceIndex  = floor(0.9*obj.MapData(ii).Ncols);     
+                frontSliceIndex = round(0.1*obj.MapData(ii).Ncols);
+                backSliceIndex  = round(0.9*obj.MapData(ii).Ncols);     
                 frontSlice = obj.MapData(ii).GetSlice(frontSliceIndex, 'col');
                 backSlice = obj.MapData(ii).GetSlice(backSliceIndex, 'col');      
                 slicePixelDist = backSliceIndex - frontSliceIndex;                
                 if obj.UserSelect == 0
                     obj.EdgeFindStartSide = 'l';
-                    efStartInd = floor(obj.EdgeFindStartDist./obj.MapData(ii).dx);                    
+                    efStartInd = round(obj.EdgeFindStartDist./obj.MapData(ii).dx);                    
                     frontIndex = edgeFinder(frontSlice,...
                                      obj.EdgeFindStartSide,...
                                      efStartInd,...
@@ -151,12 +151,12 @@ classdef PlungeProcessing < handle
                 elseif obj.UserSelect == 1
                     plot(frontSlice)
                     title('Rotation Front Slice');                    
-                    frontIndex = floor(ginput(1));
+                    frontIndex = round(ginput(1));
                     frontIndex = frontIndex(1);                        
 
                     plot(backSlice)
                     title('Rotation Back Slice');                    
-                    backIndex = floor(ginput(1));
+                    backIndex = round(ginput(1));
                     backIndex = backIndex(1);
                     if ii == obj.Nplunges
                         close(gcf)
@@ -179,7 +179,7 @@ classdef PlungeProcessing < handle
         
         function obj = AlignPlungesTrim(obj)
             dzStep = 0.0025;
-%             dzStep = 0.0015;
+%             dzStep = 0.0005;
             if obj.UserSelect == 1
                 obj.TraceData(1).Plot()
                 title('1st click = z0, |2nd click - 3rd click| = h');
@@ -209,7 +209,7 @@ classdef PlungeProcessing < handle
         end
         
         function obj = getThetaShift(obj)
-            efStartInd = floor(obj.EdgeFindStartDist/obj.TraceData(1).dx);           
+            efStartInd = round(obj.EdgeFindStartDist/obj.TraceData(1).dx);           
             % trim plunges
             leftInd = edgeFinder(obj.TraceData(1).Trace,...
                 'l', efStartInd, obj.SlopeTol, obj.TraceData(1).dx);
@@ -274,7 +274,7 @@ classdef PlungeProcessing < handle
             PlungeWidths = nan(1, obj.Nplunges);
             for ii = 1:obj.Nplunges                
                 obj.EdgeFindStartSide = 'l';
-                efStartInd = floor(obj.EdgeFindStartDist./obj.TraceData(ii).dx);
+                efStartInd = round(obj.EdgeFindStartDist./obj.TraceData(ii).dx);
                 leftEdgeIndex = edgeFinder(obj.TraceData(ii).Trace,...
                                            obj.EdgeFindStartSide,...
                                            efStartInd,...
@@ -297,7 +297,7 @@ classdef PlungeProcessing < handle
             end
 
             obj.CheckMapOrientation();
-
+            obj.InterpMaps()
 %             obj.RemovePlane();
 
             obj.RotateMaps();
@@ -311,7 +311,7 @@ classdef PlungeProcessing < handle
                 obj.TraceData(ii).Zscale = obj.MapData(ii).Zscale;
             end
 
-            obj.InterpTraces();
+%             obj.InterpTraces();
 
             % obj.PlotSlices();   % see if column average went well
 
@@ -322,7 +322,7 @@ classdef PlungeProcessing < handle
 
 %             obj.PlotSlices();   % see if alignment went well
 
-            obj.FitFirstPlunge(obj.PlungeFitOrder);
+%             obj.FitFirstPlunge(obj.PlungeFitOrder);
 
             % add most current property data to the plunge residuals
             for ii = 1:obj.Nplunges
@@ -413,7 +413,7 @@ for ii = 3:length(z)-2
     dz(ii) = atand((-z(ii+2) + 8*(z(ii+1) - z(ii-1)) +z(ii-2))/12/dx);
 end
 
-for ii = start:step:floor(length(z)/2)
+for ii = start:step:round(length(z)/2)
     deltaZ = dz(ii);
     % difference in z-position from point i to point i + stepSize; if statement
     % below uses this to decide where the edge is based on tol parameter
@@ -447,14 +447,14 @@ function zPlunge = trimPlunge(zPlunge, trimWidth, dzStep, x, z0)
 % z  - interpolated z data from main script
 % z0 - position on z axis to begin scanning at
 
-for ii = 1:floor(length(x)/2)
+for ii = 1:round(length(x)/2)
     % find first and last values in x array that correspond
     % to where z is below the current scan value
     xPair = [x(find(zPlunge < z0, 1, 'first'))  x(find(zPlunge < z0, 1, 'last'))]; 
     xDist = max(xPair) - min(xPair);
     % if only one value that meets the criteria is found, move down in z
     if length(xPair) == 1
-        z0 = z0 - dz;
+        z0 = z0 - dzStep;
     % round x_dist and f to two decimal places. if x_dist is less than or
     % equal to f, then trim at this location.
     elseif round(xDist, 4) <= round(trimWidth, 4)
@@ -474,8 +474,8 @@ shiftResidual = nan(length(x), length(shifts));
 zShift = nan(length(x), length(shifts)); 
 pFit = nan(length(shifts), 2);
 
-leftTrimInd = floor(0.2*length(x));
-rightTrimInd  = floor(0.8*length(x)); 
+leftTrimInd = round(0.2*length(x));
+rightTrimInd  = round(0.8*length(x)); 
 
 for ii = 1:length(shifts)
     zShift(:,ii) = circshift(z, shifts(ii));
