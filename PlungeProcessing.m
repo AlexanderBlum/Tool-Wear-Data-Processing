@@ -10,6 +10,7 @@ classdef PlungeProcessing < handle
         ResidCalcType {mustBeMember(ResidCalcType,{'subtractPlungeZero','subtractFit'})} = 'subtractFit'
         TrimmedPlungeLengths double
         UserSelect(1,1) int8 = 0;
+        dzTrim (1,1) double
         TrimZo(1,1) double
         TrimH(1,1) double
         PlungeFitOrder(1,1) double = 2
@@ -25,7 +26,7 @@ classdef PlungeProcessing < handle
         MapCrop   double = 100;
         R         double = 500; % tool radius in micrometers
         % deg, from maxSlope = atand(sqrt(2*doc/(R-2*doc)));
-        SlopeTol  double = 10;      
+        SlopeTol  double = 8;      
     end
     properties (Dependent)
         PlungeWidths  double
@@ -42,30 +43,30 @@ classdef PlungeProcessing < handle
     methods
         function obj = PlungeProcessing(inputData)
         % constructor function
-        obj.Nplunges = length(inputData);        
+        obj.Nplunges = length(inputData);  
+        FOV = obj.FOV;
+        Pixels = obj.Pixels;          
         if isstruct(inputData)
             for ii = 1:obj.Nplunges
-                FOV = obj.FOV;
-                Pixels = obj.Pixels;
                 obj.MapData(ii) = ...
                     SurfAnalysis(inputData(ii).phaseMap, FOV/Pixels, 'm', 'um');
-                obj.TraceData = SurfAnalysis();
-                obj.ResidualData = SurfAnalysis();
+                obj.TraceData = SurfAnalysis([], FOV/Pixels, 'um', 'um');
+                obj.ResidualData = SurfAnalysis([], FOV/Pixels, 'um', 'um');
             end
             obj.FileName = createFilename(inputData);              
         else
             obj.MapData = inputData;
             obj.FileName = inputData(1).Name;
             for ii = 1:obj.Nplunges
-                obj.TraceData = SurfAnalysis();                
-                obj.ResidualData = SurfAnalysis();                
+                obj.TraceData = SurfAnalysis([], FOV/Pixels, 'um', 'um');               
+                obj.ResidualData = SurfAnalysis([], FOV/Pixels, 'um', 'um');                
             end
         end
             obj.TrimmedPlungeLengths = nan(1, length(inputData));
             obj.DebugData = ProcessingDebug(length(inputData));
         end % constructor
  
-        function obj = CheckMapOrientation(obj)
+        function CheckMapOrientation(obj)
             for ii = 1:obj.Nplunges
                 if std(nanmean(obj.MapData(ii).PhaseMap, 2)) < 1
                     obj.MapData(ii).PhaseMap = obj.MapData(ii).PhaseMap';
@@ -73,7 +74,7 @@ classdef PlungeProcessing < handle
             end
         end % check all map orientations
         
-        function obj = RemovePlane(obj)
+        function RemovePlane(obj)
             for ii = 1:obj.Nplunges
                 avgSlice = obj.MapData(ii).GetAvgSlice('col');
                 % remove slope and dc bias
@@ -102,7 +103,7 @@ classdef PlungeProcessing < handle
                 % then add that to the left index to find the right index
                 plungeWidth = ...
                     round(sqrt(abs(min(avgSlice))*8*obj.R)/obj.MapData(ii).dx);
-                indOffset = round(.05*length(avgSlice));                   
+                indOffset = round(.1*length(avgSlice));                   
                 maskInd = round([leftEdgeInd - indOffset,...
                                 leftEdgeInd + plungeWidth + indOffset]);
                 refSurf = SurfAnalysis();
@@ -114,19 +115,19 @@ classdef PlungeProcessing < handle
             end
         end % RemovePlane
     
-        function obj = InterpMaps(obj)
+        function InterpMaps(obj)
             for ii = 1:obj.Nplunges
                 obj.MapData(ii).InterpMap(obj.dxInterp);
             end
         end % interp all plunge maps
         
-        function obj = InterpTraces(obj)
+        function InterpTraces(obj)
             for ii = 1:obj.Nplunges
                 obj.TraceData(ii).InterpTrace(obj.dxInterp);
             end
         end % interp all plunge traces
         
-        function obj = RotateMaps(obj)
+        function RotateMaps(obj)
             for ii = 1:obj.Nplunges
                 % interp         
 %                 obj.MapData(1).RotateSurf(-5)                
@@ -170,15 +171,16 @@ classdef PlungeProcessing < handle
             end
         end % rotate all maps to common coord
         
-        function obj = GetAvgSlices(obj)
+        function GetAvgSlices(obj)
             for ii = 1:obj.Nplunges
                 obj.TraceData(ii).Trace = ...
                     obj.MapData(ii).GetAvgSlice('col');
             end
         end
         
-        function obj = AlignPlungesTrim(obj)
-            dzStep = 0.0025;
+        function AlignPlungesTrim(obj)
+%             dzStep = 0.0025;
+%             obj.dzTrim
 %             dzStep = 0.0005;
             if obj.UserSelect == 1
                 obj.TraceData(1).Plot()
@@ -187,35 +189,112 @@ classdef PlungeProcessing < handle
                 close(gcf)
                 obj.TrimZo = zGinput(1);     
                 obj.TrimH = abs(diff(zGinput(2:3)));                  
-            end          
+            end
+            
             trimWidth = sqrt(8*obj.TrimH*obj.R);
+            trimWidth = obj.dxInterp*round(trimWidth/obj.dxInterp);
+%             trimWidth = trimWidth - 0.2*obj.dxInterp;
+%             if ~isempty(obj.PlungeZeroFit)
+%                 x = obj.TraceData(1).X;
+%                 x = x(1:length(obj.PlungeZeroFit));
+%                 obj.PlungeZeroFit = trimPlunge(obj.PlungeZeroFit,...
+%                                  trimWidth, obj.dzTrim, x, obj.TrimZo);
+% %                 obj.PlungeZeroFit = obj.PlungeZeroFit ...
+% %                                         - mean(obj.PlungeZeroFit);                             
+%             end
             for ii = 1:obj.Nplunges
                 % trim to common plunge width                
                 obj.TraceData(ii).Trace = ...
                     trimPlunge(obj.TraceData(ii).Trace,...
-                               trimWidth, dzStep, obj.TraceData(ii).X, obj.TrimZo);
-                % remove DC offset
-                obj.TraceData(ii).Trace = obj.TraceData(ii).Trace ...
-                                        - mean([obj.TraceData(ii).Trace(1),...
-                                               obj.TraceData(ii).Trace(end)]);
+                               trimWidth, obj.dzTrim, obj.TraceData(ii).X, obj.TrimZo);
+                % remove DC offset                
+  
+%                 obj.TraceData(ii).Trace = obj.TraceData(ii).Trace ...
+%                                         - max([obj.TraceData(ii).Trace(1),...
+%                                                obj.TraceData(ii).Trace(end)]);
+
                 obj.TrimmedPlungeLengths(ii) = ...
                     length(obj.TraceData(ii).Trace);
+%                 obj.TraceData(ii).Trace = obj.TraceData(ii).Trace ...
+%                                         - mean(obj.TraceData(ii).Trace);                
+%                 obj.TraceData(ii).Trace = obj.TraceData(ii).Trace ...
+%                                         - mean([mean(obj.TraceData(ii).Trace(1:100)),...
+%                                                mean(obj.TraceData(ii).Trace(end-100:end))]);                
             end            
         end
 
-        function obj = AlignPlungesSlope(obj)                      
-        unworn
+        function AlignPlungesSlope(obj)
+% %             if ~isempty(obj.PlungeZeroFit)
+% %                 unwornInd = [100, 1000];   
+% %                 unwornRef = obj.PlungeZeroFit(unwornInd(1):unwornInd(2));
+% %                 xResid = obj.TraceData(1).X;
+% %                 xResid = xResid(1:length(unwornRef));
+% %                 iiStart = 1;
+% %             else
+%                 % take untrimmed plunges as input
+%                 % max shift should be small-ish
+%                 % find edge of the reference plunge
+%                 efStartInd = round(obj.EdgeFindStartDist/obj.dxInterp);            
+%                 leftInd = edgeFinder(obj.TraceData(1).Trace,...
+%                     'l', efStartInd, obj.SlopeTol, obj.dxInterp);               
+%                 % left and right indices for unworn index should be
+%                 % from the edge of reference plunge
+%                 unwornInd = [leftInd+100, leftInd+1000];            
+%                 % use those indices to make unworn reference section
+%                 % and corresponding x axis from plunge 0
+%                 unwornRef = obj.TraceData(1).Trace(unwornInd(1):unwornInd(2));
+                efStartInd = round(obj.EdgeFindStartDist/obj.dxInterp);            
+                leftInd = edgeFinder(obj.TraceData(1).Trace,...
+                    'l', efStartInd, obj.SlopeTol, obj.dxInterp);               
+                % left and right indices for unworn index should be
+                % from the edge of reference plunge
+                unwornInd = [leftInd+100, leftInd+1000];       
+                unwornRef = obj.TraceData(1).Trace(unwornInd(1):unwornInd(2));    
+                xResid = obj.TraceData(1).X;
+                xResid = xResid(1:length(unwornRef));  
+                iiStart = 2;
+% %             end
+            
+            % use calibration found in previous step to figure out the 
+            % index shift needed to align everything with ref plunge            
+            for ii = iiStart:obj.Nplunges
+                slopeResid = obj.TraceData(ii).Trace(unwornInd(1):unwornInd(2)) ...
+                           - unwornRef;
+                slopeTheta = polyfit(xResid, slopeResid, 1);
+                indexShift = -round(slopeTheta(1)*obj.thetaShift);
+                obj.TraceData(ii).Trace = circshift(obj.TraceData(ii).Trace, indexShift);
+            end
+            f = sqrt(8*FakeData.PlungeDepth*PlungeProcessing.R);
+            fInd = round(0.995*f/obj.dxInterp);            
+            for ii = 1:obj.Nplunges
+                obj.TraceData(ii).Trace = obj.TraceData(ii).Trace(leftInd:leftInd+fInd);  
+                obj.TrimmedPlungeLengths(ii) = ...
+                    length(obj.TraceData(ii).Trace);                      
+            end
+      
+            % trim all plunges from the left index of reference plunge
+%             figure;
+%             plot(obj.TraceData(1).Trace)
+%             hold on
+%             plot(obj.TraceData(2).Trace)
         
         end
         
-        function obj = getThetaShift(obj)
-            efStartInd = round(obj.EdgeFindStartDist/obj.TraceData(1).dx);           
+        function GetThetaShift(obj)
+            % create fake plunge using obj.R and DOC = 10, dx = 0.1 um
+            fakeTrace = FakeData();
+            fakeTrace.CreatePlungeTrace();
+            fakeTrace.InterpTrace(obj.dxInterp);
+            % chop off ends
+%             f = 2*sqrt(2*fakeTrace.PlungeDepth*PlungeProcessing.R);
+            % shift +/- N pixels
+            efStartInd = round(obj.EdgeFindStartDist/fakeTrace.dx);           
             % trim plunges
-            leftInd = edgeFinder(obj.TraceData(1).Trace,...
-                'l', efStartInd, obj.SlopeTol, obj.TraceData(1).dx);
-            rightInd = edgeFinder(obj.TraceData(1).Trace,...
-                'r', efStartInd, obj.SlopeTol, obj.TraceData(1).dx);
-            z = obj.TraceData(1).Trace(leftInd:rightInd);
+            leftInd = edgeFinder(fakeTrace.Trace,...
+                'l', efStartInd, obj.SlopeTol, fakeTrace.dx);
+            rightInd = edgeFinder(fakeTrace.Trace,...
+                'r', efStartInd, obj.SlopeTol, fakeTrace.dx);            
+            z = fakeTrace.Trace(leftInd:rightInd);
             x = obj.TraceData(1).X(leftInd:rightInd);
             x = x - mean(x);
             shiftLim = 16;
@@ -223,14 +302,37 @@ classdef PlungeProcessing < handle
             obj.thetaShift = calcIndexShiftVsTheta(x, z, shiftLim, shiftStep);                
         end
         
-        function obj = FitFirstPlunge(obj, n)
-            PlungeFit = polyfit(obj.TraceData(1).X',...
-                                obj.TraceData(1).Trace,...
-                                n);
-            obj.PlungeZeroFit = polyval(PlungeFit, obj.TraceData(1).X)';
+        function FitFirstPlunge(obj, trim)
+            if trim
+                efStartInd = round(obj.EdgeFindStartDist/obj.dxInterp);            
+                leftInd = edgeFinder(obj.TraceData(1).Trace,...
+                    'l', efStartInd, obj.SlopeTol, obj.dxInterp);
+                rightInd = edgeFinder(obj.TraceData(1).Trace,...
+                    'r', efStartInd, obj.SlopeTol, obj.dxInterp);
+                z = obj.TraceData(1).Trace(leftInd:rightInd);
+                x = obj.TraceData(1).X;
+                x = x(leftInd:rightInd);
+            else
+                z = obj.TraceData(1).Trace;
+                x = obj.TraceData(1).X;              
+            end
+            [~, ~, zHat] = fitCircleToTool(x,z);
+%             zHat = zHat - mean(zHat);
+            obj.PlungeZeroFit = zHat;
+%             PlungeFit = polyfit(obj.TraceData(1).X,...
+%                                 obj.TraceData(1).Trace,...
+%                                 n);            
+%             PlungeFit = polyfit(x,...
+%                                 z,...
+%                                 n);
+%             obj.PlungeZeroFit = polyval(PlungeFit, x);
+%             
+%             obj.PlungeZeroFit = obj.PlungeZeroFit ...
+%                               - mean([obj.PlungeZeroFit(1),...
+%                                       obj.PlungeZeroFit(end)]);            
         end       
   
-        function obj = CalcResiduals(obj)
+        function CalcResiduals(obj)
             % find shortest z vector. truncate all z and x vectors to that length.
             % remove DC offset from z vectors. shift x vectors to be symmetric
             % should I reinterp all of the vectors to same length instead?
@@ -241,19 +343,18 @@ classdef PlungeProcessing < handle
                         for ii = 1:obj.Nplunges
                             obj.ResidualData(ii).Trace = obj.TraceData(ii).Trace(1:minLength) ...
                                                        - obj.PlungeZeroFit(1:minLength);
+%                             obj.ResidualData(ii).Trace = obj.ResidualData(ii).Trace - mean(obj.ResidualData(ii).Trace);                                                    
                         end
                     case 'subtractPlungeZero'
                         for ii = 2:obj.Nplunges
                             obj.ResidualData(ii).Trace = obj.TraceData(ii).Trace(1:minLength) ...
                                                        - obj.TraceData(1).Trace(1:minLength);
+%                             obj.ResidualData(ii).Trace = obj.ResidualData(ii).Trace - mean(obj.ResidualData(ii).Trace);                       
                         end
                 end            
-        end
+        end        
         
-        function obj = PlotResults(obj)
-        end
-        
-        function obj = PlotSlices(obj)
+        function PlotSlices(obj)
             figure;
             hold on;
             for ii = 1:obj.Nplunges
@@ -262,7 +363,7 @@ classdef PlungeProcessing < handle
 %             axis([-
         end
         
-        function obj = PlotResiduals(obj)
+        function PlotResiduals(obj)
             figure;
             hold on;
             for ii = 1:obj.Nplunges
@@ -270,6 +371,14 @@ classdef PlungeProcessing < handle
             end      
         end
         
+        function PlotTraces(obj)
+            figure;
+            hold on;
+            for ii = 1:obj.Nplunges
+                obj.TraceData(ii).Plot();
+            end      
+        end            
+            
         function PlungeWidths = get.PlungeWidths(obj)
             PlungeWidths = nan(1, obj.Nplunges);
             for ii = 1:obj.Nplunges                
@@ -290,17 +399,19 @@ classdef PlungeProcessing < handle
             end
         end
         
-        function obj = ProcessPlunges(obj)
+        function ProcessPlunges(obj)
             for ii = 1:obj.Nplunges
                 obj.MapData(ii).PhaseMap = obj.MapData(ii).PhaseMap;
                 obj.MapData(ii).Zscale   = 'um';
             end
 
             obj.CheckMapOrientation();
+            
             obj.InterpMaps()
+            
 %             obj.RemovePlane();
-
-            obj.RotateMaps();
+% 
+%             obj.RotateMaps();
 
             obj.GetAvgSlices();
 
@@ -313,12 +424,12 @@ classdef PlungeProcessing < handle
 
 %             obj.InterpTraces();
 
-            % obj.PlotSlices();   % see if column average went well
+            obj.PlotSlices();   % see if column average went well
 
-            obj.AlignPlungesTrim();
+%             obj.AlignPlungesTrim();
 %             obj = getThetaShift(obj);
             
-%             obj.AlignPlungesSlope();
+            obj.AlignPlungesSlope();
 
 %             obj.PlotSlices();   % see if alignment went well
 
@@ -446,8 +557,8 @@ function zPlunge = trimPlunge(zPlunge, trimWidth, dzStep, x, z0)
 % x  - interpolated x data from main script
 % z  - interpolated z data from main script
 % z0 - position on z axis to begin scanning at
-
-for ii = 1:round(length(x)/2)
+pDepth = x(end)^2/8/500;
+for ii = 1:round(pDepth/dzStep)
     % find first and last values in x array that correspond
     % to where z is below the current scan value
     xPair = [x(find(zPlunge < z0, 1, 'first'))  x(find(zPlunge < z0, 1, 'last'))]; 
@@ -457,16 +568,21 @@ for ii = 1:round(length(x)/2)
         z0 = z0 - dzStep;
     % round x_dist and f to two decimal places. if x_dist is less than or
     % equal to f, then trim at this location.
-    elseif round(xDist, 4) <= round(trimWidth, 4)
+    elseif round(xDist, 1) <= round(trimWidth, 1)
         zPlunge = zPlunge(x >= min(xPair) & x <= max(xPair));
         break
     end
+%     ii
+%     xDist
     z0 = z0 - dzStep;
 end
 end
 
 function thetaShift = calcIndexShiftVsTheta(x, z, shiftLim, shiftStep)
+padArray = nan(max(shiftLim),1);
 z = z';
+z = [padArray; z; padArray];
+x = [padArray; x; padArray];
 % calculate relationship between resid
 % slope and index shift
 shifts = -shiftLim:shiftStep:shiftLim;
@@ -484,8 +600,24 @@ for ii = 1:length(shifts)
                           shiftResidual(leftTrimInd:rightTrimInd, ii), 1);
 end
 thetaShift = polyfit(shifts', pFit(:, 1), 1);
-thetaShift = thetaShift(1);
+thetaShift = 1/thetaShift(1);
 end
+
+function [fitresult, gof, zHat] = fitCircleToTool(x, z)
+
+    [x, z] = prepareCurveData( x, z );
+
+    ft = fittype( '-sqrt(r^2-(x-h)^2)+k', 'independent', 'x', 'dependent', 'y' );
+    opts = fitoptions( 'Method', 'NonlinearLeastSquares' );
+    opts.Display = 'Off';
+    opts.Lower = [-150 400 400];
+    opts.StartPoint = [215 500 500];
+    opts.Upper = [300 600 600];
+
+    [fitresult, gof] = fit( x, z, ft, opts );
+    zHat = fitresult(x);
+end
+
 % function maxSlope = maxPlungeSlope(R, doc)
 %                 MaxSlope = atand(sqrt(2*doc/(R-2*doc)));
 % end
